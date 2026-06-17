@@ -159,25 +159,67 @@ client.once('ready', async () => {
       console.error('Ses kanalına bağlanılamadı:', error.message);
     }
   }
+
+  // Davet cache'ini yükle
+  for (const guild of client.guilds.cache.values()) {
+    await cacheInvites(guild);
+  }
 });
+
+// Davet takibi için cache
+const inviteCache = new Map();
+
+async function cacheInvites(guild) {
+  try {
+    const invites = await guild.invites.fetch();
+    inviteCache.set(guild.id, new Map(invites.map(i => [i.code, i.uses])));
+  } catch { /* yetki yoksa pass */ }
+}
 
 // Sunucuya yeni biri katıldığında
 client.on('guildMemberAdd', async (member) => {
+  let invitedBy = null;
+
+  try {
+    const oldInvites = inviteCache.get(member.guild.id);
+    if (oldInvites) {
+      const newInvites = await member.guild.invites.fetch();
+      for (const [, invite] of newInvites) {
+        const oldUses = oldInvites.get(invite.code) ?? 0;
+        if (invite.uses > oldUses) {
+          invitedBy = invite.inviter;
+          break;
+        }
+      }
+    }
+  } catch { /* invite alınamazsa pass */ }
+
+  // Cache'i güncelle
+  cacheInvites(member.guild);
+
+  const fields = [
+    { name: 'Kullanıcı', value: `${member.user}`, inline: true },
+    { name: 'ID', value: member.id, inline: true },
+    {
+      name: 'Hesap Oluşturma',
+      value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`,
+      inline: true,
+    },
+    { name: 'Toplam Üye', value: `${member.guild.memberCount}`, inline: true },
+  ];
+
+  if (invitedBy) {
+    fields.push({ name: '📨 Davet Eden', value: `${invitedBy.tag}`, inline: true });
+  }
+
   await sendLog(client, {
-    title: '👋 Üye Katıldı',
-    description: `${member.user.tag} sunucuya katıldı.`,
+    title: invitedBy ? '👋 Üye Katıldı (Davetle)' : '👋 Üye Katıldı',
+    description: invitedBy
+      ? `${member.user.tag} sunucuya **${invitedBy.tag}** tarafından davet edilerek katıldı.`
+      : `${member.user.tag} sunucuya katıldı.`,
     color: 0x57f287,
     thumbnail: member.user.displayAvatarURL(),
-    fields: [
-      { name: 'Kullanıcı', value: `${member.user}`, inline: true },
-      { name: 'ID', value: member.id, inline: true },
-      {
-        name: 'Hesap Oluşturma',
-        value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`,
-        inline: true,
-      },
-      { name: 'Toplam Üye', value: `${member.guild.memberCount}`, inline: true },
-    ],
+    fields,
   });
 
   if (!autoRoleId) return;
