@@ -1,0 +1,465 @@
+// Gerekli kütüphaneleri projeye dahil ediyoruz
+require('dotenv').config();
+const { Client, GatewayIntentBits, Partials, AuditLogEvent } = require('discord.js');
+const { sendLog } = require('./utils/logger');
+const { sendTicketPanel, handleCreateTicket, handleCategorySelect, handleClaimTicket, handleCloseTicketPlayer, handleCloseTicketStaff, handleConfirmClose, handleCancelClose } = require('./utils/ticketSystem');
+const { sendStaffCallPanel, handleCallStaff } = require('./utils/staffCall');
+const { containsSwear, handleSwear, getWarnings, resetWarnings, MAX_WARNINGS } = require('./utils/warningSystem');
+const { joinVoiceChannel } = require('@discordjs/voice');
+
+const autoRoleId = process.env.AUTO_ROLE_ID;
+const logChannelId = process.env.LOG_CHANNEL_ID;
+
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildVoiceStates,
+  ],
+  partials: [Partials.Message, Partials.Channel],
+});
+
+client.once('ready', async () => {
+  console.log(`🤖 Botumuz hazır! Giriş yapılan hesap: ${client.user.tag}`);
+
+  if (autoRoleId) {
+    console.log(`Otomatik rol aktif. Rol ID: ${autoRoleId}`);
+
+    for (const guild of client.guilds.cache.values()) {
+      try {
+        const role = await guild.roles.fetch(autoRoleId);
+        if (!role) {
+          console.warn(`⚠️ SUNUCU: ${guild.name} - AUTO_ROLE_ID (${autoRoleId}) geçersiz, böyle bir rol bulunamadı!`);
+          continue;
+        }
+
+        const botMember = await guild.members.fetchMe();
+        if (!botMember.permissions.has('ManageRoles')) {
+          console.warn(`⚠️ SUNUCU: ${guild.name} - Botta "Rolleri Yönet" yetkisi yok!`);
+          continue;
+        }
+
+        if (botMember.roles.highest.position <= role.position) {
+          console.warn(`⚠️ SUNUCU: ${guild.name} - Botun rolü (${botMember.roles.highest.name}), otomatik rolden (${role.name}) aşağıda! Rolü yukarı taşıyın.`);
+          continue;
+        }
+
+        console.log(`✅ SUNUCU: ${guild.name} - Otomatik rol (${role.name}) için her şey uygun.`);
+      } catch (err) {
+        console.error(`⚠️ SUNUCU: ${guild.name} - Rol kontrolü başarısız:`, err.message);
+      }
+    }
+  }
+
+  for (const guild of client.guilds.cache.values()) {
+    try {
+      const botMember = await guild.members.fetchMe();
+      if (!botMember.permissions.has('ModerateMembers')) {
+        console.warn(`⚠️ SUNUCU: ${guild.name} - Botta "Üyeleri Sustur" yetkisi yok! 3 uyarıda susturma çalışmaz.`);
+      } else {
+        console.log(`✅ SUNUCU: ${guild.name} - Susturma yetkisi tam.`);
+      }
+    } catch (err) {
+      console.error(`⚠️ SUNUCU: ${guild.name} - Yetki kontrolü başarısız:`, err.message);
+    }
+  }
+
+  if (!autoRoleId) {
+    console.warn('Uyarı: AUTO_ROLE_ID tanımlı değil, otomatik rol devre dışı.');
+  }
+
+  if (logChannelId) {
+    console.log(`Log sistemi aktif. Kanal ID: ${logChannelId}`);
+  } else {
+    console.warn('Uyarı: LOG_CHANNEL_ID tanımlı değil, log sistemi devre dışı.');
+  }
+
+  const ticketCat = process.env.TICKET_CATEGORY_ID;
+  const supportRoles = process.env.SUPPORT_ROLE_IDS;
+  if (ticketCat && supportRoles) {
+    console.log(`Ticket sistemi aktif. Kategori: ${ticketCat}, Destek Rolleri: ${supportRoles}`);
+  } else {
+    console.warn('Uyarı: TICKET_CATEGORY_ID veya SUPPORT_ROLE_IDS tanımlı değil, ticket sistemi devre dışı.');
+  }
+
+  const panelChannelId = process.env.TICKET_PANEL_CHANNEL_ID;
+  if (panelChannelId) {
+    try {
+      const panelChannel = await client.channels.fetch(panelChannelId);
+      if (panelChannel?.isTextBased()) {
+        let existing = null;
+        try {
+          const messages = await panelChannel.messages.fetch({ limit: 20 });
+          for (const msg of messages.values()) {
+            if (msg.author.id === client.user.id && msg.components.length > 0) {
+              existing = msg;
+              break;
+            }
+          }
+        } catch { /* mesaj alınamazsa yeni gönder */ }
+        if (!existing) {
+          const panelMsg = await sendTicketPanel(panelChannel);
+          if (panelMsg) await panelMsg.pin().catch(() => {});
+          console.log(`Ticket paneli ${panelChannel.name} kanalına gönderildi.`);
+        } else {
+          console.log(`Ticket paneli zaten ${panelChannel.name} kanalında duruyor.`);
+        }
+      }
+    } catch (error) {
+      console.error('Ticket paneli gönderilemedi:', error.message);
+    }
+  }
+
+  const staffCallChannelId = process.env.YETKILI_CAGIR_KANAL_ID;
+  if (staffCallChannelId) {
+    try {
+      const callChannel = await client.channels.fetch(staffCallChannelId);
+      if (callChannel?.isTextBased()) {
+        let existing = null;
+        try {
+          const messages = await callChannel.messages.fetch({ limit: 20 });
+          for (const msg of messages.values()) {
+            if (msg.author.id === client.user.id && msg.components.length > 0) {
+              existing = msg;
+              break;
+            }
+          }
+        } catch { /* mesaj alınamazsa yeni gönder */ }
+        if (!existing) {
+          const panelMsg = await sendStaffCallPanel(callChannel);
+          if (panelMsg) await panelMsg.pin().catch(() => {});
+          console.log(`Yetkili çağırma paneli ${callChannel.name} kanalına gönderildi.`);
+        } else {
+          console.log(`Yetkili çağırma paneli zaten ${callChannel.name} kanalında duruyor.`);
+        }
+      }
+    } catch (error) {
+      console.error('Yetkili çağırma paneli gönderilemedi:', error.message);
+    }
+  } else {
+    console.warn('Uyarı: YETKILI_CAGIR_KANAL_ID tanımlı değil, yetkili çağırma devre dışı.');
+  }
+
+  const voiceChannelId = process.env.VOICE_CHANNEL_ID;
+  if (voiceChannelId) {
+    try {
+      const channel = await client.channels.fetch(voiceChannelId);
+      if (channel?.isVoiceBased()) {
+        joinVoiceChannel({
+          channelId: channel.id,
+          guildId: channel.guild.id,
+          adapterCreator: channel.guild.voiceAdapterCreator,
+          selfDeaf: true,
+        });
+        console.log(`🔊 Ses kanalına bağlanıldı: ${channel.name}`);
+      }
+    } catch (error) {
+      console.error('Ses kanalına bağlanılamadı:', error.message);
+    }
+  }
+});
+
+// Sunucuya yeni biri katıldığında
+client.on('guildMemberAdd', async (member) => {
+  await sendLog(client, {
+    title: '👋 Üye Katıldı',
+    description: `${member.user.tag} sunucuya katıldı.`,
+    color: 0x57f287,
+    thumbnail: member.user.displayAvatarURL(),
+    fields: [
+      { name: 'Kullanıcı', value: `${member.user}`, inline: true },
+      { name: 'ID', value: member.id, inline: true },
+      {
+        name: 'Hesap Oluşturma',
+        value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`,
+        inline: true,
+      },
+      { name: 'Toplam Üye', value: `${member.guild.memberCount}`, inline: true },
+    ],
+  });
+
+  if (!autoRoleId) return;
+
+  try {
+    await member.roles.add(autoRoleId);
+    console.log(`${member.user.tag} kullanıcısına otomatik rol verildi.`);
+  } catch (error) {
+    console.error(`${member.user.tag} için rol verilemedi:`, error.message);
+  }
+});
+
+// Sunucudan biri ayrıldığında
+client.on('guildMemberRemove', async (member) => {
+  await sendLog(client, {
+    title: '👋 Üye Ayrıldı',
+    description: `${member.user.tag} sunucudan ayrıldı.`,
+    color: 0xfee75c,
+    thumbnail: member.user.displayAvatarURL(),
+    fields: [
+      { name: 'Kullanıcı', value: `${member.user.tag}`, inline: true },
+      { name: 'ID', value: member.id, inline: true },
+      { name: 'Toplam Üye', value: `${member.guild.memberCount}`, inline: true },
+    ],
+  });
+});
+
+// Mesaj silindiğinde
+client.on('messageDelete', async (message) => {
+  if (message.author?.bot) return;
+  if (!message.guild) return;
+
+  const content = message.content || '*Mesaj içeriği alınamadı*';
+
+  await sendLog(client, {
+    title: '🗑️ Mesaj Silindi',
+    color: 0xed4245,
+    fields: [
+      { name: 'Kullanıcı', value: message.author ? `${message.author.tag}` : 'Bilinmiyor', inline: true },
+      { name: 'Kanal', value: `${message.channel}`, inline: true },
+      { name: 'Mesaj', value: content.slice(0, 1024) },
+    ],
+  });
+});
+
+// Mesaj düzenlendiğinde
+client.on('messageUpdate', async (oldMessage, newMessage) => {
+  if (newMessage.author?.bot) return;
+  if (!newMessage.guild) return;
+  if (oldMessage.content === newMessage.content) return;
+
+  const oldContent = oldMessage.content || '*Eski içerik alınamadı*';
+  const newContent = newMessage.content || '*Yeni içerik alınamadı*';
+
+  await sendLog(client, {
+    title: '✏️ Mesaj Düzenlendi',
+    color: 0x5865f2,
+    fields: [
+      { name: 'Kullanıcı', value: `${newMessage.author.tag}`, inline: true },
+      { name: 'Kanal', value: `${newMessage.channel}`, inline: true },
+      { name: 'Eski Mesaj', value: oldContent.slice(0, 1024) },
+      { name: 'Yeni Mesaj', value: newContent.slice(0, 1024) },
+      { name: 'Mesaj Linki', value: `[Git](${newMessage.url})` },
+    ],
+  });
+});
+
+// Biri banlandığında
+client.on('guildBanAdd', async (ban) => {
+  let moderator = 'Bilinmiyor';
+
+  try {
+    const auditLogs = await ban.guild.fetchAuditLogs({
+      limit: 1,
+      type: AuditLogEvent.MemberBanAdd,
+    });
+
+    const entry = auditLogs.entries.first();
+    if (entry && entry.target?.id === ban.user.id) {
+      moderator = entry.executor?.tag || 'Bilinmiyor';
+    }
+  } catch {
+    // Denetim kaydı okunamazsa moderatör bilgisi atlanır
+  }
+
+  await sendLog(client, {
+    title: '🔨 Üye Banlandı',
+    description: `${ban.user.tag} sunucudan banlandı.`,
+    color: 0x992d22,
+    thumbnail: ban.user.displayAvatarURL(),
+    fields: [
+      { name: 'Kullanıcı', value: `${ban.user.tag}`, inline: true },
+      { name: 'ID', value: ban.user.id, inline: true },
+      { name: 'Banlayan', value: moderator, inline: true },
+      { name: 'Sebep', value: ban.reason || 'Sebep belirtilmedi' },
+    ],
+  });
+});
+
+// Ses kanalı giriş/çıkış logları
+client.on('voiceStateUpdate', async (oldState, newState) => {
+  const member = newState.member || oldState.member;
+  if (!member?.user?.bot) {
+    if (!oldState.channelId && newState.channelId) {
+      await sendLog(client, {
+        title: '🔊 Ses Kanalına Katıldı',
+        description: `${member.user.tag} ${newState.channel.name} kanalına katıldı.`,
+        color: 0x57f287,
+        thumbnail: member.user.displayAvatarURL(),
+        fields: [
+          { name: 'Kullanıcı', value: `${member.user}`, inline: true },
+          { name: 'Kanal', value: `${newState.channel.name}`, inline: true },
+        ],
+      });
+    } else if (oldState.channelId && !newState.channelId) {
+      await sendLog(client, {
+        title: '🔇 Ses Kanalından Ayrıldı',
+        description: `${member.user.tag} ${oldState.channel.name} kanalından ayrıldı.`,
+        color: 0xed4245,
+        thumbnail: member.user.displayAvatarURL(),
+        fields: [
+          { name: 'Kullanıcı', value: `${member.user}`, inline: true },
+          { name: 'Kanal', value: `${oldState.channel.name}`, inline: true },
+        ],
+      });
+    }
+  }
+});
+
+// Rol değişim logları
+client.on('guildMemberUpdate', async (oldMember, newMember) => {
+  if (oldMember.roles.cache.size === newMember.roles.cache.size) return;
+
+  const oldRoles = oldMember.roles.cache;
+  const newRoles = newMember.roles.cache;
+
+  const added = newRoles.filter(r => !oldRoles.has(r.id) && r.id !== newMember.guild.id);
+  const removed = oldRoles.filter(r => !newRoles.has(r.id) && r.id !== newMember.guild.id);
+  if (added.size === 0 && removed.size === 0) return;
+
+  let moderator = 'Bilinmiyor';
+  try {
+    const auditLogs = await newMember.guild.fetchAuditLogs({ limit: 3, type: AuditLogEvent.MemberRoleUpdate });
+    const entry = auditLogs.entries.find(e => e.target?.id === newMember.id);
+    if (entry) moderator = entry.executor?.tag || 'Bilinmiyor';
+  } catch { /* audit log alınamazsa */ }
+
+  const descParts = [];
+  if (added.size > 0) descParts.push(`**Eklendi:** ${added.map(r => r).join(', ')}`);
+  if (removed.size > 0) descParts.push(`**Alındı:** ${removed.map(r => r).join(', ')}`);
+
+  await sendLog(client, {
+    title: '🎭 Rol Değişti',
+    description: `${newMember.user.tag} kullanıcısının rolleri değiştirildi.\n${descParts.join('\n')}`,
+    color: 0x5865f2,
+    thumbnail: newMember.user.displayAvatarURL(),
+    fields: [
+      { name: 'Kullanıcı', value: `${newMember.user}`, inline: true },
+      { name: 'Değiştiren', value: moderator, inline: true },
+    ],
+  });
+});
+
+// Birisi mesaj yazdığında tetiklenen fonksiyon
+client.on('messageCreate', async (message) => {
+  if (message.author.bot) return;
+
+  if (containsSwear(message.content) && message.guild) {
+    await handleSwear(client, message);
+    return;
+  }
+
+  if (message.content.toLowerCase() === '!sa') {
+    message.reply('Aleykümselam, hoş geldin! 👋');
+  }
+
+  if (message.content === '!ping') {
+    message.reply('🏓 Pong!');
+  }
+
+  if (message.content === '!panel') {
+    if (!message.member.permissions.has('Administrator')) {
+      return message.reply('❌ Bu komutu kullanmak için yönetici yetkisine sahip olmalısınız.');
+    }
+    await sendTicketPanel(message.channel);
+  }
+
+  if (message.content === '!yetkili-cagir-panel') {
+    if (!message.member.permissions.has('Administrator')) {
+      return message.reply('❌ Bu komutu kullanmak için yönetici yetkisine sahip olmalısınız.');
+    }
+    await sendStaffCallPanel(message.channel);
+  }
+
+  if (message.content.startsWith('!uyarılar')) {
+    const args = message.content.split(' ');
+    const target = message.mentions.users.first() || message.author;
+    const count = getWarnings(message.guild.id, target.id);
+    message.reply(`${target.tag} kullanıcısının uyarı sayısı: **${count}/${MAX_WARNINGS}**`);
+  }
+
+  if (message.content.startsWith('!uyarı-sıfırla')) {
+    if (!message.member.permissions.has('Administrator')) {
+      return message.reply('❌ Bu komutu kullanmak için yönetici yetkisine sahip olmalısınız.');
+    }
+    const target = message.mentions.users.first();
+    if (!target) return message.reply('❌ Bir kullanıcı etiketleyin.');
+    resetWarnings(message.guild.id, target.id);
+    message.reply(`✅ ${target.tag} kullanıcısının uyarıları sıfırlandı.`);
+  }
+
+  if (message.content.startsWith('!sustur-test')) {
+    if (!message.member.permissions.has('Administrator')) {
+      return message.reply('❌ Bu komutu kullanmak için yönetici yetkisine sahip olmalısınız.');
+    }
+    const target = message.mentions.users.first();
+    if (!target) return message.reply('❌ Bir kullanıcı etiketleyin.');
+    try {
+      const member = await message.guild.members.fetch(target.id);
+      const botMember = await message.guild.members.fetchMe();
+      const reply = [
+        `**Bot Rolü:** ${botMember.roles.highest.name} (${botMember.roles.highest.position})`,
+        `**Üye Rolü:** ${member.roles.highest.name} (${member.roles.highest.position})`,
+        `**Bot üstte mi?** ${botMember.roles.highest.position > member.roles.highest.position}`,
+        `**ModerateMembers yetkisi:** ${botMember.permissions.has('ModerateMembers')}`,
+      ].join('\n');
+      await message.reply(reply);
+    } catch (e) {
+      message.reply(`❌ Hata: ${e.message}`);
+    }
+  }
+});
+
+// Ticket buton ve menü etkileşimleri
+client.on('interactionCreate', async (interaction) => {
+  if (interaction.isButton()) {
+    switch (interaction.customId) {
+      case 'create_ticket':
+        await handleCreateTicket(interaction);
+        break;
+      case 'call_staff':
+        await handleCallStaff(interaction);
+        break;
+      case 'claim_ticket':
+        await handleClaimTicket(interaction);
+        break;
+      case 'close_ticket_player':
+        await handleCloseTicketPlayer(interaction);
+        break;
+      case 'close_ticket_staff':
+        await handleCloseTicketStaff(interaction);
+        break;
+      case 'confirm_close_ticket':
+        await handleConfirmClose(interaction);
+        break;
+      case 'cancel_close_ticket':
+        await handleCancelClose(interaction);
+        break;
+    }
+  }
+
+  if (interaction.isStringSelectMenu()) {
+    switch (interaction.customId) {
+      case 'select_ticket_category':
+        await handleCategorySelect(interaction);
+        break;
+    }
+  }
+});
+
+const token = process.env.DISCORD_TOKEN;
+
+if (!token) {
+  console.error('Hata: .env dosyasında DISCORD_TOKEN bulunamadı.');
+  process.exit(1);
+}
+
+client.login(token);
+
+// 2 saatte bir otomatik restart (hosting ortamında process tekrar başlatılır)
+const RESTART_INTERVAL = 2 * 60 * 60 * 1000;
+setInterval(() => {
+  console.log('🔄 2 saat doldu, bot yeniden başlatılıyor...');
+  process.exit(0);
+}, RESTART_INTERVAL);
