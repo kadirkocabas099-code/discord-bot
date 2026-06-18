@@ -569,7 +569,7 @@ if (!token) {
 client.login(token);
 
 // 2 saatte bir otomatik restart (hosting ortamında process tekrar başlatılır)
-const RESTART_INTERVAL = 2 * 60 * 60 * 1000;
+const RESTART_INTERVAL = 5 * 60 * 60 * 1000;
 setInterval(() => {
   console.log('🔄 2 saat doldu, bot yeniden başlatılıyor...');
   process.exit(0);
