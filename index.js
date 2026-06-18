@@ -149,14 +149,18 @@ client.once('ready', async () => {
 
   // 30 saniyede bir bot seste mi kontrol et
   setInterval(() => {
-    const voiceChannelId = process.env.VOICE_CHANNEL_ID;
+    try {
+      const voiceChannelId = process.env.VOICE_CHANNEL_ID;
     if (!voiceChannelId) return;
     const channel = client.channels.cache.get(voiceChannelId);
     if (!channel?.isVoiceBased()) return;
     const botMember = channel.guild.members.cache.get(client.user.id);
-    if (botMember && !botMember.voice.channelId) {
-      console.log('🔊 Bot seste değil, yeniden bağlanıyor...');
-      connectVoice(client);
+      if (botMember && !botMember.voice.channelId) {
+        console.log('🔊 Bot seste değil, yeniden bağlanıyor...');
+        connectVoice(client);
+      }
+    } catch (e) {
+      console.error('❌ Voice kontrol hatasi:', e.message);
     }
   }, 30000);
 
@@ -178,25 +182,24 @@ async function cacheInvites(guild) {
 
 // Ses kanalına bağlan ve 60sn'de bir kontrol et
 function connectVoice(client) {
-  const voiceChannelId = process.env.VOICE_CHANNEL_ID;
-  if (!voiceChannelId) return;
-
-  // Eski bağlantıyı temizle
-  if (voiceConnection) {
-    try { voiceConnection.destroy(); } catch { /* */ }
-    voiceConnection = null;
-  }
-
-  const guild = client.guilds.cache.find(g => {
-    const ch = g.channels.cache.get(voiceChannelId);
-    return ch?.isVoiceBased();
-  });
-  if (!guild) return;
-
-  const channel = guild.channels.cache.get(voiceChannelId);
-  if (!channel?.isVoiceBased()) return;
-
   try {
+    const voiceChannelId = process.env.VOICE_CHANNEL_ID;
+    if (!voiceChannelId) return console.log('VOICE_DEBUG: VOICE_CHANNEL_ID yok');
+
+    const guild = client.guilds.cache.find(g => {
+      const ch = g.channels.cache.get(voiceChannelId);
+      return ch?.isVoiceBased();
+    });
+    if (!guild) return console.log('VOICE_DEBUG: guild bulunamadi');
+
+    const channel = guild.channels.cache.get(voiceChannelId);
+    if (!channel?.isVoiceBased()) return console.log('VOICE_DEBUG: kanal voice degil');
+
+    if (voiceConnection) {
+      try { voiceConnection.destroy(); } catch { }
+      voiceConnection = null;
+    }
+
     voiceConnection = joinVoiceChannel({
       channelId: channel.id,
       guildId: channel.guild.id,
@@ -204,8 +207,20 @@ function connectVoice(client) {
       selfDeaf: true,
     });
     console.log(`🔊 Ses kanalına bağlanıldı: ${channel.name}`);
+
+    voiceConnection.on('error', (err) => {
+      console.error('🔊 VOICE HATA:', err.message, err.stack);
+    });
+
+    voiceConnection.on('stateChange', (oldState, newState) => {
+      console.log(`VOICE_DEBUG: ${oldState.status} -> ${newState.status}`);
+      if (newState.status === 'disconnected' || newState.status === 'destroyed') {
+        console.log(`🔊 Voice ${newState.status} oldu, 10sn sonra yeniden bağlanılacak`);
+        setTimeout(() => connectVoice(client), 10000);
+      }
+    });
   } catch (error) {
-    console.error('Sese bağlanılamadı:', error.message);
+    console.error('🔊 connectVoice hatasi:', error.message, error.stack);
   }
 }
 
