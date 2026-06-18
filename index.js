@@ -334,6 +334,28 @@ client.on('guildBanAdd', async (ban) => {
 client.on('voiceStateUpdate', async (oldState, newState) => {
   const member = newState.member || oldState.member;
 
+  // Bot ses kanalından çıkarsa yeniden bağlan
+  if (member?.user?.id === client.user.id && oldState.channelId && !newState.channelId) {
+    const voiceChannelId = process.env.VOICE_CHANNEL_ID;
+    if (voiceChannelId) {
+      try {
+        const channel = await client.channels.fetch(voiceChannelId);
+        if (channel?.isVoiceBased()) {
+          joinVoiceChannel({
+            channelId: channel.id,
+            guildId: channel.guild.id,
+            adapterCreator: channel.guild.voiceAdapterCreator,
+            selfDeaf: true,
+          });
+          console.log(`🔊 Bot ses kanalından düştü, yeniden bağlanıldı: ${channel.name}`);
+        }
+      } catch (error) {
+        console.error('Sese yeniden bağlanılamadı:', error.message);
+      }
+    }
+    return;
+  }
+
   if (!member?.user?.bot) {
     if (!oldState.channelId && newState.channelId) {
       await sendLog(client, {
