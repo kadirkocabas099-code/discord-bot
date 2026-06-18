@@ -559,6 +559,14 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, '0.0.0.0', () => console.log(`🌐 HTTP sunucusu ${PORT} portunda hazır.`));
 server.on('error', (e) => console.error('HTTP sunucu hatası:', e.message));
 
+// Beklenmeyen hataları logla
+process.on('uncaughtException', (err) => {
+  console.error('❌ UNCAUGHT EXCEPTION:', err.message, err.stack);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('❌ UNHANDLED REJECTION:', reason?.message || reason);
+});
+
 const token = process.env.DISCORD_TOKEN;
 
 if (!token) {
