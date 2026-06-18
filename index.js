@@ -164,10 +164,12 @@ client.once('ready', async () => {
     }
   }, 45000);
 
-  // Davet cache'ini yükle
+  // Davet cache'ini yükle (arka planda, ready'i bloklamasın)
   for (const guild of client.guilds.cache.values()) {
-    await cacheInvites(guild);
+    cacheInvites(guild);
   }
+
+  console.log('✅ Ready event tamamlandı, bot artık tam aktif.');
 });
 
 // Davet takibi için cache
