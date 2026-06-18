@@ -140,10 +140,20 @@ client.once('ready', async () => {
     console.warn('Uyarı: YETKILI_CAGIR_KANAL_ID tanımlı değil, yetkili çağırma devre dışı.');
   }
 
-  // Bot canlı mı kontrol etmek için heartbeat (10 dk)
+  // Bot canlı mı kontrol etmek için heartbeat (5 dk)
   setInterval(() => {
-    console.log(`💓 Bot çalışıyor - ${new Date().toLocaleString('tr-TR')}`);
-  }, 600000);
+    const wsStatus = ['CONNECTED', 'CONNECTING', 'RECONNECTING', 'IDLE', 'CLOSED'][client.ws?.status] || '?';
+    const userTag = client.user?.tag || 'YOK';
+    console.log(`💓 Bot çalışıyor - ${userTag} ws:${wsStatus} - ${new Date().toLocaleString('tr-TR')}`);
+  }, 300000);
+
+  // WebSocket olaylarını logla
+  client.on('shardDisconnect', (closeEvent, shardId) => {
+    console.error(`🔌 WebSocket koptu! shard:${shardId} code:${closeEvent?.code} reason:${closeEvent?.reason}`);
+  });
+  client.on('invalidated', () => {
+    console.error('🔌 Client session geçersiz oldu! Token geçersiz veya bot başka yerden giriş yaptı.');
+  });
 
   console.log('✅ Ses modülü devre dışı (test modu).');
 
