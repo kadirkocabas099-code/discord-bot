@@ -142,51 +142,30 @@ client.once('ready', async () => {
     console.warn('Uyarı: YETKILI_CAGIR_KANAL_ID tanımlı değil, yetkili çağırma devre dışı.');
   }
 
-  const voiceChannelId = process.env.VOICE_CHANNEL_ID;
-  if (voiceChannelId) {
-    try {
-      const channel = await client.channels.fetch(voiceChannelId);
-      if (channel?.isVoiceBased()) {
-        const connection = joinVoiceChannel({
-          channelId: channel.id,
-          guildId: channel.guild.id,
-          adapterCreator: channel.guild.voiceAdapterCreator,
-          selfDeaf: true,
-        });
-        console.log(`🔊 Ses kanalına bağlanıldı: ${channel.name}`);
-
-        connection.on('stateChange', (oldState, newState) => {
-          if (newState.status === 'disconnected' || newState.status === 'destroyed') {
-            console.log(`🔊 Voice bağlantısı koptu (${newState.status}), 5sn sonra yeniden bağlanılacak...`);
-            setTimeout(() => {
-              try {
-                joinVoiceChannel({
-                  channelId: channel.id,
-                  guildId: channel.guild.id,
-                  adapterCreator: channel.guild.voiceAdapterCreator,
-                  selfDeaf: true,
-                });
-                console.log(`🔊 Ses kanalına yeniden bağlanıldı: ${channel.name}`);
-              } catch (e) {
-                console.error('Sese yeniden bağlanılamadı:', e.message);
-              }
-            }, 5000);
-          }
-        });
-
-        connection.on('error', (err) => {
-          console.error('🔊 Voice bağlantı hatası:', err.message);
-        });
-      }
-    } catch (error) {
-      console.error('Ses kanalına bağlanılamadı:', error.message);
-    }
-  }
+  connectVoice(client);
 
   // Bot canlı mı kontrol etmek için heartbeat (10 dk)
   setInterval(() => {
     console.log(`💓 Bot çalışıyor - ${new Date().toLocaleString('tr-TR')}`);
   }, 600000);
+
+  // 60 saniyede bir bot seste mi kontrol et
+  setInterval(() => {
+    const voiceChannelId = process.env.VOICE_CHANNEL_ID;
+    if (!voiceChannelId) return;
+
+    const guild = client.guilds.cache.find(g => {
+      const ch = g.channels.cache.get(voiceChannelId);
+      return ch?.isVoiceBased();
+    });
+    if (!guild) return;
+
+    const botMember = guild.members.cache.get(client.user.id);
+    if (botMember && !botMember.voice.channelId) {
+      console.log('🔊 Bot seste değil, yeniden bağlanıyor...');
+      connectVoice(client);
+    }
+  }, 60000);
 
   // Davet cache'ini yükle
   for (const guild of client.guilds.cache.values()) {
@@ -202,6 +181,33 @@ async function cacheInvites(guild) {
     const invites = await guild.invites.fetch();
     inviteCache.set(guild.id, new Map(invites.map(i => [i.code, i.uses])));
   } catch { /* yetki yoksa pass */ }
+}
+
+// Ses kanalına bağlan ve 60sn'de bir kontrol et
+function connectVoice(client) {
+  const voiceChannelId = process.env.VOICE_CHANNEL_ID;
+  if (!voiceChannelId) return;
+
+  const guild = client.guilds.cache.find(g => {
+    const ch = g.channels.cache.get(voiceChannelId);
+    return ch?.isVoiceBased();
+  });
+  if (!guild) return;
+
+  const channel = guild.channels.cache.get(voiceChannelId);
+  if (!channel?.isVoiceBased()) return;
+
+  try {
+    joinVoiceChannel({
+      channelId: channel.id,
+      guildId: channel.guild.id,
+      adapterCreator: channel.guild.voiceAdapterCreator,
+      selfDeaf: true,
+    });
+    console.log(`🔊 Ses kanalına bağlanıldı: ${channel.name}`);
+  } catch (error) {
+    console.error('Sese bağlanılamadı:', error.message);
+  }
 }
 
 // Sunucuya yeni biri katıldığında
