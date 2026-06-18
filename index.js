@@ -211,12 +211,15 @@ client.once('ready', async () => {
 
   // Presence ayarla (online görünmesi için)
   try {
-    await client.user.setPresence({
+    const presence = {
       status: 'online',
       activities: [{ name: 'ARX RolePlay', type: ActivityType.Playing }],
-    });
+    };
+    console.log('Presence ayarlanıyor:', JSON.stringify(presence));
+    await client.user.setPresence(presence);
+    console.log('Presence ayarlandı, mevcut:', client.user.presence?.status);
   } catch (e) {
-    console.error('Presence ayarlanamadı:', e.message);
+    console.error('Presence ayarlanamadı:', e.message, e.stack);
   }
 
   // Davet cache'ini yükle (arka planda, ready'i bloklamasın)
