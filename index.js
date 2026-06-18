@@ -5,6 +5,8 @@ const { sendLog } = require('./utils/logger');
 const { sendTicketPanel, handleCreateTicket, handleCategorySelect, handleClaimTicket, handleCloseTicketPlayer, handleCloseTicketStaff, handleConfirmClose, handleCancelClose } = require('./utils/ticketSystem');
 const { sendStaffCallPanel, handleCallStaff } = require('./utils/staffCall');
 const { containsSwear, handleSwear, getWarnings, resetWarnings, MAX_WARNINGS } = require('./utils/warningSystem');
+const { joinVoiceChannel } = require('@discordjs/voice');
+
 const autoRoleId = process.env.AUTO_ROLE_ID;
 const logChannelId = process.env.LOG_CHANNEL_ID;
 
@@ -155,7 +157,52 @@ client.once('ready', async () => {
     console.error('🔌 Client session geçersiz oldu! Token geçersiz veya bot başka yerden giriş yaptı.');
   });
 
-  console.log('✅ Ses modülü devre dışı (test modu).');
+  // Ses kanalına bağlan
+  function connectVoice(client) {
+    try {
+      const voiceChannelId = process.env.VOICE_CHANNEL_ID;
+      if (!voiceChannelId) return;
+
+      const guild = client.guilds.cache.find(g => {
+        const ch = g.channels.cache.get(voiceChannelId);
+        return ch?.isVoiceBased();
+      });
+      if (!guild) return;
+
+      const channel = guild.channels.cache.get(voiceChannelId);
+      if (!channel?.isVoiceBased()) return;
+
+      joinVoiceChannel({
+        channelId: channel.id,
+        guildId: channel.guild.id,
+        adapterCreator: channel.guild.voiceAdapterCreator,
+        selfDeaf: true,
+      });
+      console.log(`🔊 Ses kanalına bağlanıldı: ${channel.name}`);
+    } catch (error) {
+      console.error('Sese bağlanılamadı:', error.message);
+    }
+  }
+
+  // İlk bağlantı
+  connectVoice(client);
+
+  // 60 saniyede bir kontrol et, düşmüşse yeniden bağlan
+  setInterval(() => {
+    try {
+      const voiceChannelId = process.env.VOICE_CHANNEL_ID;
+      if (!voiceChannelId) return;
+      const channel = client.channels.cache.get(voiceChannelId);
+      if (!channel?.isVoiceBased()) return;
+      const botMember = channel.guild.members.cache.get(client.user.id);
+      if (!botMember?.voice.channelId) {
+        console.log('🔊 Bot seste değil, yeniden bağlanıyor...');
+        connectVoice(client);
+      }
+    } catch (e) {
+      console.error('Voice kontrol hatası:', e.message);
+    }
+  }, 60000);
 
   // Davet cache'ini yükle (arka planda, ready'i bloklamasın)
   for (const guild of client.guilds.cache.values()) {
