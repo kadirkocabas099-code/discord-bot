@@ -142,12 +142,15 @@ client.once('ready', async () => {
     console.warn('Uyarı: YETKILI_CAGIR_KANAL_ID tanımlı değil, yetkili çağırma devre dışı.');
   }
 
-  // Bot canlı mı kontrol etmek için heartbeat (5 dk)
+  // Bot canlı mı kontrol etmek için heartbeat (3 dk)
   setInterval(() => {
     const wsStatus = ['CONNECTED', 'CONNECTING', 'RECONNECTING', 'IDLE', 'CLOSED'][client.ws?.status] || '?';
     const userTag = client.user?.tag || 'YOK';
-    console.log(`💓 Bot çalışıyor - ${userTag} ws:${wsStatus} - ${new Date().toLocaleString('tr-TR')}`);
-  }, 300000);
+    const readyAt = client.readyAt ? client.readyAt.toLocaleString('tr-TR') : 'YOK';
+    const shards = client.ws?.shards?.size || 0;
+    const ping = client.ws?.ping ?? '?';
+    console.log(`💓 Bot çalışıyor - ${userTag} | ws:${wsStatus} | shards:${shards} | ping:${ping}ms | ready:${readyAt} | ${new Date().toLocaleString('tr-TR')}`);
+  }, 180000);
 
   // WebSocket olaylarını logla
   client.on('shardDisconnect', (closeEvent, shardId) => {
