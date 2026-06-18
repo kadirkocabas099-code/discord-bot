@@ -10,6 +10,8 @@ const { joinVoiceChannel } = require('@discordjs/voice');
 const autoRoleId = process.env.AUTO_ROLE_ID;
 const logChannelId = process.env.LOG_CHANNEL_ID;
 
+const { ActivityType } = require('discord.js');
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -19,6 +21,10 @@ const client = new Client({
     GatewayIntentBits.GuildVoiceStates,
   ],
   partials: [Partials.Message, Partials.Channel],
+  presence: {
+    status: 'online',
+    activities: [{ name: 'ARX RolePlay', type: ActivityType.Playing }],
+  },
 });
 
 client.once('ready', async () => {
