@@ -142,7 +142,8 @@ client.once('ready', async () => {
     console.warn('Uyarı: YETKILI_CAGIR_KANAL_ID tanımlı değil, yetkili çağırma devre dışı.');
   }
 
-  connectVoice(client);
+  // Ses kanalına 5 saniye gecikmeyle bağlan (client tam oturana kadar)
+  setTimeout(() => connectVoice(client), 5000);
 
   // Bot canlı mı kontrol etmek için heartbeat (10 dk)
   setInterval(() => {
@@ -151,16 +152,12 @@ client.once('ready', async () => {
 
   // 60 saniyede bir bot seste mi kontrol et
   setInterval(() => {
+    if (!voiceConnection) return;
     const voiceChannelId = process.env.VOICE_CHANNEL_ID;
     if (!voiceChannelId) return;
-
-    const guild = client.guilds.cache.find(g => {
-      const ch = g.channels.cache.get(voiceChannelId);
-      return ch?.isVoiceBased();
-    });
-    if (!guild) return;
-
-    const botMember = guild.members.cache.get(client.user.id);
+    const channel = client.channels.cache.get(voiceChannelId);
+    if (!channel?.isVoiceBased()) return;
+    const botMember = channel.guild.members.cache.get(client.user.id);
     if (botMember && !botMember.voice.channelId) {
       console.log('🔊 Bot seste değil, yeniden bağlanıyor...');
       connectVoice(client);
@@ -188,6 +185,12 @@ function connectVoice(client) {
   const voiceChannelId = process.env.VOICE_CHANNEL_ID;
   if (!voiceChannelId) return;
 
+  // Eski bağlantıyı temizle
+  if (voiceConnection) {
+    try { voiceConnection.destroy(); } catch { /* */ }
+    voiceConnection = null;
+  }
+
   const guild = client.guilds.cache.find(g => {
     const ch = g.channels.cache.get(voiceChannelId);
     return ch?.isVoiceBased();
@@ -198,7 +201,7 @@ function connectVoice(client) {
   if (!channel?.isVoiceBased()) return;
 
   try {
-    joinVoiceChannel({
+    voiceConnection = joinVoiceChannel({
       channelId: channel.id,
       guildId: channel.guild.id,
       adapterCreator: channel.guild.voiceAdapterCreator,
@@ -560,6 +563,8 @@ client.on('interactionCreate', async (interaction) => {
     }
   }
 });
+
+let voiceConnection = null;
 
 // Render'ın port taraması için basit HTTP sunucusu
 const http = require('http');
