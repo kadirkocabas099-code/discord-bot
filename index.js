@@ -147,22 +147,21 @@ client.once('ready', async () => {
     console.log(`💓 Bot çalışıyor - ${new Date().toLocaleString('tr-TR')}`);
   }, 600000);
 
-  // 30 saniyede bir bot seste mi kontrol et
+  // 45 saniyede bir bot seste mi kontrol et
   setInterval(() => {
     try {
-      const voiceChannelId = process.env.VOICE_CHANNEL_ID;
-    if (!voiceChannelId) return;
-    const channel = client.channels.cache.get(voiceChannelId);
-    if (!channel?.isVoiceBased()) return;
-    const botMember = channel.guild.members.cache.get(client.user.id);
-      if (botMember && !botMember.voice.channelId) {
+      if (!voiceConnection) return;
+      const channel = client.channels.cache.get(process.env.VOICE_CHANNEL_ID);
+      if (!channel?.isVoiceBased()) return;
+      const botMember = channel.guild.members.cache.get(client.user.id);
+      if (!botMember?.voice.channelId) {
         console.log('🔊 Bot seste değil, yeniden bağlanıyor...');
         connectVoice(client);
       }
     } catch (e) {
-      console.error('❌ Voice kontrol hatasi:', e.message);
+      console.error('Voice kontrol hatasi:', e.message);
     }
-  }, 30000);
+  }, 45000);
 
   // Davet cache'ini yükle
   for (const guild of client.guilds.cache.values()) {
@@ -180,25 +179,25 @@ async function cacheInvites(guild) {
   } catch { /* yetki yoksa pass */ }
 }
 
-// Ses kanalına bağlan ve 60sn'de bir kontrol et
+// Ses kanalına bağlan
 function connectVoice(client) {
   try {
     const voiceChannelId = process.env.VOICE_CHANNEL_ID;
-    if (!voiceChannelId) return console.log('VOICE_DEBUG: VOICE_CHANNEL_ID yok');
+    if (!voiceChannelId) return;
+
+    if (voiceConnection) {
+      try { voiceConnection.removeAllListeners(); voiceConnection.destroy(); } catch {}
+      voiceConnection = null;
+    }
 
     const guild = client.guilds.cache.find(g => {
       const ch = g.channels.cache.get(voiceChannelId);
       return ch?.isVoiceBased();
     });
-    if (!guild) return console.log('VOICE_DEBUG: guild bulunamadi');
+    if (!guild) return;
 
     const channel = guild.channels.cache.get(voiceChannelId);
-    if (!channel?.isVoiceBased()) return console.log('VOICE_DEBUG: kanal voice degil');
-
-    if (voiceConnection) {
-      try { voiceConnection.destroy(); } catch { }
-      voiceConnection = null;
-    }
+    if (!channel?.isVoiceBased()) return;
 
     voiceConnection = joinVoiceChannel({
       channelId: channel.id,
@@ -207,20 +206,8 @@ function connectVoice(client) {
       selfDeaf: true,
     });
     console.log(`🔊 Ses kanalına bağlanıldı: ${channel.name}`);
-
-    voiceConnection.on('error', (err) => {
-      console.error('🔊 VOICE HATA:', err.message, err.stack);
-    });
-
-    voiceConnection.on('stateChange', (oldState, newState) => {
-      console.log(`VOICE_DEBUG: ${oldState.status} -> ${newState.status}`);
-      if (newState.status === 'disconnected' || newState.status === 'destroyed') {
-        console.log(`🔊 Voice ${newState.status} oldu, 10sn sonra yeniden bağlanılacak`);
-        setTimeout(() => connectVoice(client), 10000);
-      }
-    });
   } catch (error) {
-    console.error('🔊 connectVoice hatasi:', error.message, error.stack);
+    console.error('Sese bağlanılamadı:', error.message);
   }
 }
 
@@ -587,11 +574,17 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, '0.0.0.0', () => console.log(`🌐 HTTP sunucusu ${PORT} portunda hazır.`));
 server.on('error', (e) => console.error('HTTP sunucu hatası:', e.message));
 
-// Beklenmeyen hataları logla
+// Beklenmeyen hataları dosyaya da logla
 process.on('uncaughtException', (err) => {
-  console.error('❌ UNCAUGHT EXCEPTION:', err.message, err.stack);
+  const fs = require('fs');
+  const msg = `[${new Date().toISOString()}] UNCAUGHT EXCEPTION: ${err.message}\n${err.stack}\n`;
+  fs.appendFileSync('crash.log', msg);
+  console.error('❌ UNCAUGHT EXCEPTION:', err.message);
 });
 process.on('unhandledRejection', (reason) => {
+  const fs = require('fs');
+  const msg = `[${new Date().toISOString()}] UNHANDLED REJECTION: ${reason?.message || reason}\n`;
+  fs.appendFileSync('crash.log', msg);
   console.error('❌ UNHANDLED REJECTION:', reason?.message || reason);
 });
 
