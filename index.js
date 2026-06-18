@@ -147,10 +147,11 @@ client.once('ready', async () => {
     console.log(`💓 Bot çalışıyor - ${new Date().toLocaleString('tr-TR')}`);
   }, 600000);
 
-  // 45 saniyede bir bot seste mi kontrol et
+  // İlk bağlantıyı yap, sonra 45 saniyede bir kontrol et
+  connectVoice(client);
   setInterval(() => {
     try {
-      if (!voiceConnection) return;
+      if (!process.env.VOICE_CHANNEL_ID) return;
       const channel = client.channels.cache.get(process.env.VOICE_CHANNEL_ID);
       if (!channel?.isVoiceBased()) return;
       const botMember = channel.guild.members.cache.get(client.user.id);
