@@ -142,17 +142,13 @@ client.once('ready', async () => {
     console.warn('Uyarı: YETKILI_CAGIR_KANAL_ID tanımlı değil, yetkili çağırma devre dışı.');
   }
 
-  // Ses kanalına 5 saniye gecikmeyle bağlan (client tam oturana kadar)
-  setTimeout(() => connectVoice(client), 5000);
-
   // Bot canlı mı kontrol etmek için heartbeat (10 dk)
   setInterval(() => {
     console.log(`💓 Bot çalışıyor - ${new Date().toLocaleString('tr-TR')}`);
   }, 600000);
 
-  // 60 saniyede bir bot seste mi kontrol et
+  // 30 saniyede bir bot seste mi kontrol et
   setInterval(() => {
-    if (!voiceConnection) return;
     const voiceChannelId = process.env.VOICE_CHANNEL_ID;
     if (!voiceChannelId) return;
     const channel = client.channels.cache.get(voiceChannelId);
@@ -162,7 +158,7 @@ client.once('ready', async () => {
       console.log('🔊 Bot seste değil, yeniden bağlanıyor...');
       connectVoice(client);
     }
-  }, 60000);
+  }, 30000);
 
   // Davet cache'ini yükle
   for (const guild of client.guilds.cache.values()) {
