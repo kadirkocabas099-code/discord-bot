@@ -21,10 +21,6 @@ const client = new Client({
     GatewayIntentBits.GuildVoiceStates,
   ],
   partials: [Partials.Message, Partials.Channel],
-  presence: {
-    status: 'online',
-    activities: [{ name: 'ARX RolePlay', type: ActivityType.Playing }],
-  },
 });
 
 client.once('ready', async () => {
@@ -212,6 +208,16 @@ client.once('ready', async () => {
       console.error('Voice kontrol hatası:', e.message);
     }
   }, 60000);
+
+  // Presence ayarla (online görünmesi için)
+  try {
+    await client.user.setPresence({
+      status: 'online',
+      activities: [{ name: 'ARX RolePlay', type: ActivityType.Playing }],
+    });
+  } catch (e) {
+    console.error('Presence ayarlanamadı:', e.message);
+  }
 
   // Davet cache'ini yükle (arka planda, ready'i bloklamasın)
   for (const guild of client.guilds.cache.values()) {
