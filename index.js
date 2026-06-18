@@ -147,18 +147,46 @@ client.once('ready', async () => {
     try {
       const channel = await client.channels.fetch(voiceChannelId);
       if (channel?.isVoiceBased()) {
-        joinVoiceChannel({
+        const connection = joinVoiceChannel({
           channelId: channel.id,
           guildId: channel.guild.id,
           adapterCreator: channel.guild.voiceAdapterCreator,
           selfDeaf: true,
         });
         console.log(`🔊 Ses kanalına bağlanıldı: ${channel.name}`);
+
+        connection.on('stateChange', (oldState, newState) => {
+          if (newState.status === 'disconnected' || newState.status === 'destroyed') {
+            console.log(`🔊 Voice bağlantısı koptu (${newState.status}), 5sn sonra yeniden bağlanılacak...`);
+            setTimeout(() => {
+              try {
+                joinVoiceChannel({
+                  channelId: channel.id,
+                  guildId: channel.guild.id,
+                  adapterCreator: channel.guild.voiceAdapterCreator,
+                  selfDeaf: true,
+                });
+                console.log(`🔊 Ses kanalına yeniden bağlanıldı: ${channel.name}`);
+              } catch (e) {
+                console.error('Sese yeniden bağlanılamadı:', e.message);
+              }
+            }, 5000);
+          }
+        });
+
+        connection.on('error', (err) => {
+          console.error('🔊 Voice bağlantı hatası:', err.message);
+        });
       }
     } catch (error) {
       console.error('Ses kanalına bağlanılamadı:', error.message);
     }
   }
+
+  // Bot canlı mı kontrol etmek için heartbeat (10 dk)
+  setInterval(() => {
+    console.log(`💓 Bot çalışıyor - ${new Date().toLocaleString('tr-TR')}`);
+  }, 600000);
 
   // Davet cache'ini yükle
   for (const guild of client.guilds.cache.values()) {
@@ -333,28 +361,6 @@ client.on('guildBanAdd', async (ban) => {
 // Ses kanalı giriş/çıkış logları
 client.on('voiceStateUpdate', async (oldState, newState) => {
   const member = newState.member || oldState.member;
-
-  // Bot ses kanalından çıkarsa yeniden bağlan
-  if (member?.user?.id === client.user.id && oldState.channelId && !newState.channelId) {
-    const voiceChannelId = process.env.VOICE_CHANNEL_ID;
-    if (voiceChannelId) {
-      try {
-        const channel = await client.channels.fetch(voiceChannelId);
-        if (channel?.isVoiceBased()) {
-          joinVoiceChannel({
-            channelId: channel.id,
-            guildId: channel.guild.id,
-            adapterCreator: channel.guild.voiceAdapterCreator,
-            selfDeaf: true,
-          });
-          console.log(`🔊 Bot ses kanalından düştü, yeniden bağlanıldı: ${channel.name}`);
-        }
-      } catch (error) {
-        console.error('Sese yeniden bağlanılamadı:', error.message);
-      }
-    }
-    return;
-  }
 
   if (!member?.user?.bot) {
     if (!oldState.channelId && newState.channelId) {
