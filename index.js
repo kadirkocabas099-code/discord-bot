@@ -1,6 +1,6 @@
 // Gerekli kütüphaneleri projeye dahil ediyoruz
 require('dotenv').config();
-const { Client, GatewayIntentBits, Partials, AuditLogEvent } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, AuditLogEvent, EmbedBuilder } = require('discord.js');
 const { sendLog } = require('./utils/logger');
 const { sendTicketPanel, handleCreateTicket, handleCategorySelect, handleClaimTicket, handleCloseTicketPlayer, handleCloseTicketStaff, handleConfirmClose, handleCancelClose } = require('./utils/ticketSystem');
 const { sendStaffCallPanel, handleCallStaff } = require('./utils/staffCall');
@@ -230,6 +230,17 @@ client.on('guildMemberAdd', async (member) => {
   } catch (error) {
     console.error(`${member.user.tag} için rol verilemedi:`, error.message);
   }
+
+  // DM hoş geldin mesajı
+  try {
+    const welcomeEmbed = new EmbedBuilder()
+      .setTitle(`👋 ${member.guild.name} Sunucusuna Hoş Geldin!`)
+      .setDescription('Sunucumuza katıldığın için teşekkürler! 🎉\n\nKurallarımızı okumayı unutma.\nİyi eğlenceler!')
+      .setColor(0x57f287)
+      .setThumbnail(member.guild.iconURL())
+      .setTimestamp();
+    await member.send({ embeds: [welcomeEmbed] });
+  } catch { /* DM kapalıysa sorun değil */ }
 });
 
 // Sunucudan biri ayrıldığında
@@ -383,12 +394,37 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
   });
 });
 
+// Reklam engelleme
+function containsAd(text) {
+  const adPatterns = [
+    /discord\.gg\//i, /discord\.com\/invite\//i, /discordapp\.com\/invite\//i,
+    /\.gg\//i, /davet\.li\//i, /davet et/i,
+  ];
+  return adPatterns.some(p => p.test(text));
+}
+
 // Birisi mesaj yazdığında tetiklenen fonksiyon
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
   if (containsSwear(message.content) && message.guild) {
     await handleSwear(client, message);
+    return;
+  }
+
+  if (containsAd(message.content) && message.guild) {
+    try {
+      await message.delete();
+      await sendLog(client, {
+        title: '🚫 Reklam Engellendi',
+        color: 0xed4245,
+        fields: [
+          { name: 'Kullanıcı', value: `${message.author}`, inline: true },
+          { name: 'Kanal', value: `${message.channel}`, inline: true },
+          { name: 'Mesaj', value: message.content.slice(0, 500) },
+        ],
+      });
+    } catch { /* silinemezse pass */ }
     return;
   }
 
