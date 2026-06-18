@@ -5,8 +5,6 @@ const { sendLog } = require('./utils/logger');
 const { sendTicketPanel, handleCreateTicket, handleCategorySelect, handleClaimTicket, handleCloseTicketPlayer, handleCloseTicketStaff, handleConfirmClose, handleCancelClose } = require('./utils/ticketSystem');
 const { sendStaffCallPanel, handleCallStaff } = require('./utils/staffCall');
 const { containsSwear, handleSwear, getWarnings, resetWarnings, MAX_WARNINGS } = require('./utils/warningSystem');
-const { joinVoiceChannel } = require('@discordjs/voice');
-
 const autoRoleId = process.env.AUTO_ROLE_ID;
 const logChannelId = process.env.LOG_CHANNEL_ID;
 
@@ -147,22 +145,7 @@ client.once('ready', async () => {
     console.log(`💓 Bot çalışıyor - ${new Date().toLocaleString('tr-TR')}`);
   }, 600000);
 
-  // İlk bağlantıyı yap, sonra 45 saniyede bir kontrol et
-  connectVoice(client);
-  setInterval(() => {
-    try {
-      if (!process.env.VOICE_CHANNEL_ID) return;
-      const channel = client.channels.cache.get(process.env.VOICE_CHANNEL_ID);
-      if (!channel?.isVoiceBased()) return;
-      const botMember = channel.guild.members.cache.get(client.user.id);
-      if (!botMember?.voice.channelId) {
-        console.log('🔊 Bot seste değil, yeniden bağlanıyor...');
-        connectVoice(client);
-      }
-    } catch (e) {
-      console.error('Voice kontrol hatasi:', e.message);
-    }
-  }, 45000);
+  console.log('✅ Ses modülü devre dışı (test modu).');
 
   // Davet cache'ini yükle (arka planda, ready'i bloklamasın)
   for (const guild of client.guilds.cache.values()) {
@@ -180,38 +163,6 @@ async function cacheInvites(guild) {
     const invites = await guild.invites.fetch();
     inviteCache.set(guild.id, new Map(invites.map(i => [i.code, i.uses])));
   } catch { /* yetki yoksa pass */ }
-}
-
-// Ses kanalına bağlan
-function connectVoice(client) {
-  try {
-    const voiceChannelId = process.env.VOICE_CHANNEL_ID;
-    if (!voiceChannelId) return;
-
-    if (voiceConnection) {
-      try { voiceConnection.removeAllListeners(); voiceConnection.destroy(); } catch {}
-      voiceConnection = null;
-    }
-
-    const guild = client.guilds.cache.find(g => {
-      const ch = g.channels.cache.get(voiceChannelId);
-      return ch?.isVoiceBased();
-    });
-    if (!guild) return;
-
-    const channel = guild.channels.cache.get(voiceChannelId);
-    if (!channel?.isVoiceBased()) return;
-
-    voiceConnection = joinVoiceChannel({
-      channelId: channel.id,
-      guildId: channel.guild.id,
-      adapterCreator: channel.guild.voiceAdapterCreator,
-      selfDeaf: true,
-    });
-    console.log(`🔊 Ses kanalına bağlanıldı: ${channel.name}`);
-  } catch (error) {
-    console.error('Sese bağlanılamadı:', error.message);
-  }
 }
 
 // Sunucuya yeni biri katıldığında
@@ -564,8 +515,6 @@ client.on('interactionCreate', async (interaction) => {
     }
   }
 });
-
-let voiceConnection = null;
 
 // Render'ın port taraması için basit HTTP sunucusu
 const http = require('http');
