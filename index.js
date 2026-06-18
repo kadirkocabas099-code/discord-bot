@@ -526,6 +526,14 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
+// Render'ın port taraması için basit HTTP sunucusu
+const http = require('http');
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('Bot çalışıyor.');
+}).listen(PORT, () => console.log(`HTTP sunucusu port ${PORT}'de dinliyor (Render için).`));
+
 const token = process.env.DISCORD_TOKEN;
 
 if (!token) {
