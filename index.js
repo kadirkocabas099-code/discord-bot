@@ -229,12 +229,7 @@ client.once('ready', async () => {
 
   console.log('✅ Ready event tamamlandı, bot artık tam aktif.');
 
-  // 5 saatte bir otomatik restart (hosting ortamında process tekrar başlatılır)
-  const RESTART_INTERVAL = 5 * 60 * 60 * 1000;
-  setInterval(() => {
-    console.log('🔄 5 saat doldu, bot yeniden başlatılıyor...');
-    process.exit(0);
-  }, RESTART_INTERVAL);
+
 });
 
 // Davet takibi için cache
