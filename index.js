@@ -229,6 +229,13 @@ client.once('ready', async () => {
 
   console.log('✅ Ready event tamamlandı, bot artık tam aktif.');
 
+  // 24 saatte bir otomatik restart
+  const RESTART_INTERVAL = 24 * 60 * 60 * 1000;
+  setInterval(() => {
+    console.log('🔄 24 saat doldu, bot yeniden başlatılıyor...');
+    process.exit(0);
+  }, RESTART_INTERVAL);
+
 
 });
 
